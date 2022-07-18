@@ -1,0 +1,94 @@
+# Copyright 2021 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: build-test
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - "**.md"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        os: ['ubuntu-18.04', 'ubuntu-20.04']
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: get git ref
+        id: vars
+        shell: bash
+        run: |
+          echo "##[set-output name=branch;]$(TMP=${GITHUB_REF#refs/heads/}; echo ${TMP//\//-})"
+          echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Set up GCC
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: 10
+          platform: x64
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v0
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Get gcloud CLI info
+        run: gcloud info
+
+      - name: tests
+        run: |
+          set -x
+          export GOOGLE_CLOUD_PROJECT=${{ secrets.GCP_PROJECT_ID }}
+          export CLOUDDQ_BIGQUERY_DATASET="clouddq_test_usc1"
+          export CLOUDDQ_BIGQUERY_REGION="us-central1"
+          export GOOGLE_APPLICATION_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+          export GOOGLE_SDK_CREDENTIALS=${GOOGLE_APPLICATION_CREDENTIALS}
+          export IMPERSONATION_SERVICE_ACCOUNT=${{ secrets.IMPERSONATION_SERVICE_ACCOUNT }}
+          export GCS_BUCKET_NAME=${{ secrets.GCS_BUCKET_NAME }}
+          export GCS_BAZEL_CACHE=${{ secrets.BAZEL_CACHE_BUCKET }}
+          export DATAPLEX_LAKE_NAME="dataplex-lake"
+          export DATAPLEX_REGION_ID="us-central1"
+          export DATAPLEX_ZONE_ID="test-zone"
+          export DATAPLEX_BUCKET_NAME="clouddq-test-asset"
+          export DATAPLEX_BIGQUERY_DATASET_ID="clouddq_test_asset_raw"
+          export DATAPLEX_TARGET_BQ_DATASET="clouddq_test_target_dataset"
+          export DATAPLEX_TARGET_BQ_TABLE="dataplex_target_table"
+          export DATAPLEX_TASK_SA=${{ secrets.DATAPLEX_TASK_SA }}
+          ls -la
+          find . -not -path '*/\.*' | sed -e "s/[^-][^\/]*\// |/g" -e "s/|\([^ ]\)/|-\1/"
+          cat /etc/*-release
+          DEBIAN_FRONTEND=noninteractive sudo apt-get update && sudo apt-get install -yq tzdata curl lsb-core lsb-release # > /dev/null
+          . ./scripts/cloud_build_test_debian_ubuntu.sh "3.8.12"
+          gsutil cp clouddq_patched.zip gs://${{ secrets.GCS_BUCKET_NAME }}/build-artifacts/${{matrix.os}}/python3.8/`date -I'minutes'`/${{ steps.vars.outputs.branch }}_${{ steps.vars.outputs.sha_short }}/clouddq-executable.zip
+          gsutil cp clouddq_patched.zip.hashsum gs://${{ secrets.GCS_BUCKET_NAME }}/build-artifacts/${{matrix.os}}/python3.8/`date -I'minutes'`/${{ steps.vars.outputs.branch }}_${{ steps.vars.outputs.sha_short }}/clouddq-executable.zip.hashsum
+          gsutil cp clouddq/integration/clouddq_pyspark_driver.py gs://${{ secrets.GCS_BUCKET_NAME }}/build-artifacts/${{matrix.os}}/python3.8/`date -I'minutes'`/${{ steps.vars.outputs.branch }}_${{ steps.vars.outputs.sha_short }}/clouddq_pyspark_driver.py
+        shell: bash
