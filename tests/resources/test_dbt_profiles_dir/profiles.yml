@@ -1,0 +1,27 @@
+# Copyright 2021 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+default:
+  target: dev
+  outputs:
+    dev:
+      type: bigquery
+      method: oauth
+      project: "{{ env_var('GOOGLE_CLOUD_PROJECT', '<your_gcp_project_id>') }}"
+      dataset: "{{ env_var('CLOUDDQ_BIGQUERY_DATASET', 'clouddq') }}"
+      threads: 1
+      timeout_seconds: 90
+      location: "{{ env_var('CLOUDDQ_BIGQUERY_REGION', 'EU') }}"
+      priority: interactive
+      retries: 1
